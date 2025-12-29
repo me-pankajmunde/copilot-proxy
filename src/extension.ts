@@ -11,6 +11,7 @@ import {
 } from './providers';
 import { getLoggingService, disposeLoggingService } from './logging';
 import { getCacheService, disposeCacheService } from './cache';
+import { getToolRegistry } from './tools/registry';
 import { LogsWebviewPanel } from './webviews/logs';
 
 let proxyServer: ProxyServer | null = null;
@@ -201,6 +202,49 @@ export async function activate(context: vscode.ExtensionContext) {
             const cache = getCacheService();
             cache.setEnabled(!cache.enabled);
             vscode.window.showInformationMessage(`Cache ${cache.enabled ? 'enabled' : 'disabled'}`);
+        }),
+
+        vscode.commands.registerCommand('copilot-proxy.showTools', async () => {
+            const toolRegistry = getToolRegistry();
+            const status = toolRegistry.getStatus();
+            const tools = toolRegistry.getAvailableTools();
+
+            if (tools.length === 0) {
+                vscode.window.showWarningMessage('No tools available. Check tools configuration.');
+                return;
+            }
+
+            const items = tools.map(tool => ({
+                label: tool.function.name,
+                description: tool.function.description?.substring(0, 60) + (tool.function.description && tool.function.description.length > 60 ? '...' : ''),
+                detail: `Parameters: ${Object.keys(tool.function.parameters?.properties || {}).join(', ') || 'none'}`
+            }));
+
+            const selected = await vscode.window.showQuickPick(items, {
+                placeHolder: `${status.builtinCount} built-in, ${status.mcpServerCount} MCP servers`,
+                title: `Copilot Proxy - Available Tools (${tools.length})`
+            });
+
+            if (selected) {
+                const tool = tools.find(t => t.function.name === selected.label);
+                if (tool) {
+                    const toolInfo = JSON.stringify(tool, null, 2);
+                    const doc = await vscode.workspace.openTextDocument({
+                        content: toolInfo,
+                        language: 'json'
+                    });
+                    await vscode.window.showTextDocument(doc);
+                }
+            }
+        }),
+
+        vscode.commands.registerCommand('copilot-proxy.reloadTools', async () => {
+            const toolRegistry = getToolRegistry();
+            await toolRegistry.reloadConfig();
+            const status = toolRegistry.getStatus();
+            vscode.window.showInformationMessage(
+                `Tools reloaded: ${status.toolCount} tools from ${status.builtinCount} built-ins and ${status.mcpServerCount} MCP servers`
+            );
         })
     );
 
@@ -216,13 +260,16 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log('[Copilot Proxy] Extension activated');
 }
 
-export function deactivate() {
+export async function deactivate() {
     console.log('[Copilot Proxy] Extension deactivating...');
     
     if (proxyServer) {
         proxyServer.dispose();
         proxyServer = null;
     }
+    
+    // Dispose tool registry
+    await getToolRegistry().dispose();
     
     disposeProviderRegistry();
     disposeLoggingService();

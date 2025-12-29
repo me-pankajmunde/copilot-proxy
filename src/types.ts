@@ -2,10 +2,15 @@
  * OpenAI API compatible type definitions
  */
 
+import { Tool, ToolChoice, ToolCall } from './tools/types';
+
 // Request types
 export interface OpenAIMessage {
-    role: 'system' | 'user' | 'assistant';
-    content: string;
+    role: 'system' | 'user' | 'assistant' | 'tool';
+    content: string | null;
+    tool_calls?: ToolCall[];
+    tool_call_id?: string;
+    name?: string;
 }
 
 export interface ChatCompletionRequest {
@@ -19,6 +24,8 @@ export interface ChatCompletionRequest {
     presence_penalty?: number;
     stop?: string | string[];
     user?: string;
+    tools?: Tool[];
+    tool_choice?: ToolChoice;
 }
 
 // Response types
@@ -26,9 +33,10 @@ export interface ChatCompletionChoice {
     index: number;
     message: {
         role: 'assistant';
-        content: string;
+        content: string | null;
+        tool_calls?: ToolCall[];
     };
-    finish_reason: 'stop' | 'length' | 'content_filter' | null;
+    finish_reason: 'stop' | 'length' | 'content_filter' | 'tool_calls' | null;
 }
 
 export interface ChatCompletionChunkChoice {
@@ -36,8 +44,17 @@ export interface ChatCompletionChunkChoice {
     delta: {
         role?: 'assistant';
         content?: string;
+        tool_calls?: Array<{
+            index: number;
+            id?: string;
+            type?: 'function';
+            function?: {
+                name?: string;
+                arguments?: string;
+            };
+        }>;
     };
-    finish_reason: 'stop' | 'length' | 'content_filter' | null;
+    finish_reason: 'stop' | 'length' | 'content_filter' | 'tool_calls' | null;
 }
 
 export interface ChatCompletionUsage {

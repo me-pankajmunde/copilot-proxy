@@ -47,6 +47,14 @@
       {
         "command": "copilot-proxy.toggleCache",
         "title": "Copilot Proxy: Toggle Response Cache"
+      },
+      {
+        "command": "copilot-proxy.showTools",
+        "title": "Copilot Proxy: Show Available Tools"
+      },
+      {
+        "command": "copilot-proxy.reloadTools",
+        "title": "Copilot Proxy: Reload Tool Configuration"
       }
     ],
     "configuration": {
@@ -178,6 +186,80 @@
                   "description": "Ollama server URL"
                 }
               }
+            }
+          }
+        },
+        "copilot-proxy.tools": {
+          "type": "object",
+          "default": {
+            "enabled": true,
+            "requireApproval": true,
+            "maxToolCalls": 5,
+            "timeoutMs": 30000,
+            "enabledBuiltins": [],
+            "mcpServers": []
+          },
+          "description": "Configure tool calling (MCP) support for LLM models",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable tool calling support"
+            },
+            "requireApproval": {
+              "type": "boolean",
+              "default": true,
+              "description": "Require user approval before executing tools"
+            },
+            "maxToolCalls": {
+              "type": "number",
+              "default": 5,
+              "description": "Maximum number of tool calls per request"
+            },
+            "timeoutMs": {
+              "type": "number",
+              "default": 30000,
+              "description": "Timeout for tool execution in milliseconds"
+            },
+            "enabledBuiltins": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "description": "List of enabled built-in tools. Empty array enables all built-ins."
+            },
+            "mcpServers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Unique identifier for this MCP server"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Display name for this MCP server"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "URL of the MCP server (HTTP endpoint)"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable this MCP server"
+                  },
+                  "headers": {
+                    "type": "object",
+                    "description": "Additional headers for MCP server requests"
+                  }
+                },
+                "required": ["url"]
+              },
+              "default": [],
+              "description": "MCP server configurations for custom tools"
             }
           }
         }

@@ -1,15 +1,18 @@
 /**
- * Chat completions handler - refactored for multi-provider support
+ * Chat completions handler - refactored for multi-provider support with tool calling
  */
 
 import * as http from 'http';
 import { getProviderRegistry } from '../providers/registry';
 import { getLoggingService } from '../logging';
 import { getCacheService } from '../cache';
+import { getToolRegistry } from '../tools/registry';
+import { Tool, ToolCall } from '../tools/types';
 import {
     ChatCompletionRequest,
     ChatCompletionResponse,
     ChatCompletionChunk,
+    OpenAIMessage,
 } from '../types';
 import { CompletionOptions, StreamChunk } from '../providers/types';
 
@@ -50,8 +53,33 @@ function extractOptions(body: ChatCompletionRequest): CompletionOptions {
         topP: body.top_p,
         frequencyPenalty: body.frequency_penalty,
         presencePenalty: body.presence_penalty,
-        stop: body.stop
+        stop: body.stop,
+        tools: body.tools,
+        toolChoice: body.tool_choice
     };
+}
+
+/**
+ * Merge tools from request with registry tools
+ */
+function getMergedTools(requestTools?: Tool[]): Tool[] {
+    const registry = getToolRegistry();
+    const registryTools = registry.getAvailableTools();
+    
+    if (!requestTools || requestTools.length === 0) {
+        return registryTools;
+    }
+    
+    // Merge: request tools take precedence
+    const toolMap = new Map<string, Tool>();
+    for (const tool of registryTools) {
+        toolMap.set(tool.function.name, tool);
+    }
+    for (const tool of requestTools) {
+        toolMap.set(tool.function.name, tool);
+    }
+    
+    return Array.from(toolMap.values());
 }
 
 /**
@@ -315,8 +343,14 @@ export async function handleChatCompletions(
     }
 
     const { provider, model, fullId } = lookup;
-    const options = extractOptions(body);
     const streaming = body.stream ?? false;
+    
+    // Merge tools from request with registry tools
+    const tools = getMergedTools(body.tools);
+    const options = extractOptions(body);
+    if (tools.length > 0) {
+        options.tools = tools;
+    }
 
     // Check cache first
     const cacheService = getCacheService();
@@ -340,35 +374,58 @@ export async function handleChatCompletions(
     req.on('close', () => abortController.abort());
 
     try {
-        const chunks = provider.sendChatCompletion(
-            model.id,
-            body.messages,
-            options,
-            abortController.signal
-        );
-
-        if (streaming) {
-            await handleStreamingResponse(
-                res,
-                chunks,
-                fullId,
-                completionId,
-                created,
-                (response) => {
-                    log.complete(response);
-                    cacheService.set(provider.id, model.id, body.messages, options, response);
-                }
-            );
-        } else {
-            const response = await handleNonStreamingResponse(
-                res,
-                chunks,
+        // For non-streaming with tools, we may need to execute a tool loop
+        if (!streaming && tools.length > 0) {
+            const result = await executeWithToolLoop(
+                provider,
+                model.id,
+                body.messages,
+                options,
+                abortController.signal,
                 fullId,
                 completionId,
                 created
             );
-            log.complete(response);
-            cacheService.set(provider.id, model.id, body.messages, options, response);
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result, null, 2));
+            
+            log.complete(result.choices[0]?.message?.content || '');
+            if (result.choices[0]?.message?.content) {
+                cacheService.set(provider.id, model.id, body.messages, options, result.choices[0].message.content);
+            }
+        } else {
+            // Standard streaming/non-streaming without tool loop
+            const chunks = provider.sendChatCompletion(
+                model.id,
+                body.messages,
+                options,
+                abortController.signal
+            );
+
+            if (streaming) {
+                await handleStreamingResponse(
+                    res,
+                    chunks,
+                    fullId,
+                    completionId,
+                    created,
+                    (response) => {
+                        log.complete(response);
+                        cacheService.set(provider.id, model.id, body.messages, options, response);
+                    }
+                );
+            } else {
+                const response = await handleNonStreamingResponse(
+                    res,
+                    chunks,
+                    fullId,
+                    completionId,
+                    created
+                );
+                log.complete(response);
+                cacheService.set(provider.id, model.id, body.messages, options, response);
+            }
         }
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -384,4 +441,118 @@ export async function handleChatCompletions(
             }));
         }
     }
+}
+
+/**
+ * Execute completion with tool calling loop
+ * Runs until the model produces a final response without tool calls (or max iterations)
+ */
+async function executeWithToolLoop(
+    provider: any,
+    modelId: string,
+    messages: OpenAIMessage[],
+    options: CompletionOptions,
+    signal: AbortSignal,
+    fullId: string,
+    completionId: string,
+    created: number,
+    maxIterations: number = 5
+): Promise<ChatCompletionResponse> {
+    const toolRegistry = getToolRegistry();
+    const config = toolRegistry.getConfig();
+    const conversationMessages = [...messages];
+    
+    let iterations = 0;
+    const maxToolCalls = config.maxToolCalls || 5;
+
+    while (iterations < maxIterations) {
+        iterations++;
+
+        // Get completion from model
+        const chunks = provider.sendChatCompletion(
+            modelId,
+            conversationMessages,
+            options,
+            signal
+        );
+
+        let content = '';
+        let toolCalls: ToolCall[] = [];
+        let finishReason: string | null = null;
+
+        // Collect full response
+        for await (const chunk of chunks) {
+            if (chunk.content) {
+                content += chunk.content;
+            }
+            if (chunk.toolCalls) {
+                toolCalls = chunk.toolCalls;
+            }
+            if (chunk.finishReason) {
+                finishReason = chunk.finishReason;
+            }
+        }
+
+        // If no tool calls or finish reason is not tool_calls, return final response
+        if (toolCalls.length === 0 || finishReason !== 'tool_calls') {
+            return {
+                id: completionId,
+                object: 'chat.completion',
+                created,
+                model: fullId,
+                choices: [{
+                    index: 0,
+                    message: {
+                        role: 'assistant',
+                        content: content || null,
+                        tool_calls: toolCalls.length > 0 ? toolCalls : undefined
+                    },
+                    finish_reason: (finishReason as any) || 'stop'
+                }],
+                usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+            };
+        }
+
+        // We have tool calls - add assistant message to conversation
+        conversationMessages.push({
+            role: 'assistant',
+            content: content || null,
+            tool_calls: toolCalls
+        });
+
+        // Execute tool calls (limited)
+        const callsToExecute = toolCalls.slice(0, maxToolCalls);
+        const results = await toolRegistry.executeToolCalls(callsToExecute);
+
+        // Add tool results to conversation
+        for (const call of callsToExecute) {
+            const result = results.get(call.id);
+            conversationMessages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                content: result?.success 
+                    ? (result.result || 'Tool executed successfully')
+                    : `Error: ${result?.error || 'Unknown error'}`
+            });
+        }
+
+        // Continue to next iteration to get model's response to tool results
+    }
+
+    // Max iterations reached - return with what we have
+    return {
+        id: completionId,
+        object: 'chat.completion',
+        created,
+        model: fullId,
+        choices: [{
+            index: 0,
+            message: {
+                role: 'assistant',
+                content: 'Maximum tool iterations reached. Please try again with a simpler request.'
+            },
+            finish_reason: 'stop'
+        }],
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+    };
 }

@@ -3,6 +3,7 @@
  */
 
 import { OpenAIMessage } from '../types';
+import { Tool, ToolChoice, ToolCall } from '../tools/types';
 
 /**
  * Model information from a provider
@@ -35,6 +36,8 @@ export interface CompletionOptions {
     frequencyPenalty?: number;
     presencePenalty?: number;
     stop?: string | string[];
+    tools?: Tool[];
+    toolChoice?: ToolChoice;
 }
 
 /**
@@ -42,7 +45,8 @@ export interface CompletionOptions {
  */
 export interface StreamChunk {
     content: string;
-    finishReason?: 'stop' | 'length' | 'content_filter' | null;
+    finishReason?: 'stop' | 'length' | 'content_filter' | 'tool_calls' | null;
+    toolCalls?: ToolCall[];
 }
 
 /**

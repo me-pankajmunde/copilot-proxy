@@ -148,7 +148,7 @@ export class CopilotProvider implements IProvider {
         // Collect system messages
         for (const msg of messages) {
             if (msg.role === 'system') {
-                systemContent += (systemContent ? '\n' : '') + msg.content;
+                systemContent += (systemContent ? '\n' : '') + (msg.content || '');
             }
         }
 
@@ -159,15 +159,16 @@ export class CopilotProvider implements IProvider {
             }
 
             if (msg.role === 'assistant') {
-                result.push(vscode.LanguageModelChatMessage.Assistant(msg.content));
-            } else if (msg.role === 'user') {
+                result.push(vscode.LanguageModelChatMessage.Assistant(msg.content || ''));
+            } else if (msg.role === 'user' || msg.role === 'tool') {
+                const content = msg.content || '';
                 // Prepend system content to first user message
                 if (result.length === 0 && systemContent) {
-                    const combinedContent = `${systemContent}\n\n---\n\n${msg.content}`;
+                    const combinedContent = `${systemContent}\n\n---\n\n${content}`;
                     result.push(vscode.LanguageModelChatMessage.User(combinedContent));
                     systemContent = '';
                 } else {
-                    result.push(vscode.LanguageModelChatMessage.User(msg.content));
+                    result.push(vscode.LanguageModelChatMessage.User(content));
                 }
             }
         }
