@@ -1,0 +1,201 @@
+{
+  "name": "copilot-openai-proxy",
+  "displayName": "Copilot OpenAI Proxy",
+  "description": "Expose GitHub Copilot chat models through an OpenAI-compatible API",
+  "version": "0.1.0",
+  "publisher": "your-publisher-id",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "copilot-proxy.start",
+        "title": "Copilot Proxy: Start Server"
+      },
+      {
+        "command": "copilot-proxy.stop",
+        "title": "Copilot Proxy: Stop Server"
+      },
+      {
+        "command": "copilot-proxy.copyToken",
+        "title": "Copilot Proxy: Copy API Token"
+      },
+      {
+        "command": "copilot-proxy.showModels",
+        "title": "Copilot Proxy: Show Available Models"
+      },
+      {
+        "command": "copilot-proxy.showLogs",
+        "title": "Copilot Proxy: Show Request Logs"
+      },
+      {
+        "command": "copilot-proxy.showStats",
+        "title": "Copilot Proxy: Show Statistics"
+      },
+      {
+        "command": "copilot-proxy.clearCache",
+        "title": "Copilot Proxy: Clear Response Cache"
+      },
+      {
+        "command": "copilot-proxy.toggleCache",
+        "title": "Copilot Proxy: Toggle Response Cache"
+      }
+    ],
+    "configuration": {
+      "title": "Copilot OpenAI Proxy",
+      "properties": {
+        "copilot-proxy.port": {
+          "type": "number",
+          "default": 5001,
+          "description": "Port for the OpenAI-compatible API server"
+        },
+        "copilot-proxy.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start the server when VS Code launches"
+        },
+        "copilot-proxy.cacheEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable response caching for repeated requests"
+        },
+        "copilot-proxy.cacheTtlMinutes": {
+          "type": "number",
+          "default": 60,
+          "description": "Cache time-to-live in minutes"
+        },
+        "copilot-proxy.providers": {
+          "type": "object",
+          "default": {
+            "copilot": {
+              "enabled": true
+            },
+            "openai": {
+              "enabled": false,
+              "apiKey": "${env:OPENAI_API_KEY}",
+              "baseUrl": "https://api.openai.com/v1"
+            },
+            "azure-openai": {
+              "enabled": false,
+              "endpoint": "${env:AZURE_OPENAI_ENDPOINT}",
+              "apiKey": "${env:AZURE_OPENAI_API_KEY}",
+              "apiVersion": "2024-02-15-preview",
+              "deployments": {}
+            },
+            "ollama": {
+              "enabled": false,
+              "baseUrl": "http://localhost:11434"
+            }
+          },
+          "description": "Configure LLM providers. Use ${env:VAR_NAME} for environment variables.",
+          "properties": {
+            "copilot": {
+              "type": "object",
+              "description": "GitHub Copilot provider (uses VS Code Language Model API)",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Enable GitHub Copilot models"
+                }
+              }
+            },
+            "openai": {
+              "type": "object",
+              "description": "OpenAI API provider",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Enable OpenAI models"
+                },
+                "apiKey": {
+                  "type": "string",
+                  "description": "OpenAI API key. Use ${env:OPENAI_API_KEY} for environment variable."
+                },
+                "baseUrl": {
+                  "type": "string",
+                  "default": "https://api.openai.com/v1",
+                  "description": "OpenAI API base URL"
+                },
+                "organization": {
+                  "type": "string",
+                  "description": "OpenAI organization ID (optional)"
+                }
+              }
+            },
+            "azure-openai": {
+              "type": "object",
+              "description": "Azure OpenAI provider",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Enable Azure OpenAI models"
+                },
+                "endpoint": {
+                  "type": "string",
+                  "description": "Azure OpenAI endpoint URL"
+                },
+                "apiKey": {
+                  "type": "string",
+                  "description": "Azure OpenAI API key"
+                },
+                "apiVersion": {
+                  "type": "string",
+                  "default": "2024-02-15-preview",
+                  "description": "Azure OpenAI API version"
+                },
+                "deployments": {
+                  "type": "object",
+                  "description": "Map of model names to deployment names",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "ollama": {
+              "type": "object",
+              "description": "Ollama local provider",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Enable Ollama local models"
+                },
+                "baseUrl": {
+                  "type": "string",
+                  "default": "http://localhost:11434",
+                  "description": "Ollama server URL"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0"
+  }
+}

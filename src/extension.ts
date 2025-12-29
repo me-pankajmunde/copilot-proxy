@@ -1,0 +1,232 @@
+import * as vscode from 'vscode';
+import { ProxyServer } from './server';
+import {
+    getProviderRegistry,
+    disposeProviderRegistry,
+    loadProvidersConfig,
+    CopilotProvider,
+    OpenAIProvider,
+    OllamaProvider,
+    AzureOpenAIProvider
+} from './providers';
+import { getLoggingService, disposeLoggingService } from './logging';
+import { getCacheService, disposeCacheService } from './cache';
+import { LogsWebviewPanel } from './webviews/logs';
+
+let proxyServer: ProxyServer | null = null;
+
+/**
+ * Initialize all configured providers
+ */
+async function initializeProviders(): Promise<void> {
+    const registry = getProviderRegistry();
+    const config = loadProvidersConfig();
+
+    // Always register Copilot provider
+    const copilotConfig = config.copilot ?? { enabled: true };
+    registry.registerProvider(new CopilotProvider(copilotConfig));
+
+    // Register OpenAI provider if configured
+    if (config.openai) {
+        registry.registerProvider(new OpenAIProvider(config.openai));
+    }
+
+    // Register Ollama provider if configured
+    if (config.ollama) {
+        registry.registerProvider(new OllamaProvider(config.ollama));
+    }
+
+    // Register Azure OpenAI provider if configured
+    if (config['azure-openai']) {
+        registry.registerProvider(new AzureOpenAIProvider(config['azure-openai']));
+    }
+
+    // Initialize all providers
+    await registry.initialize();
+}
+
+export async function activate(context: vscode.ExtensionContext) {
+    console.log('[Copilot Proxy] Extension activating...');
+
+    // Create status bar item
+    const statusBarItem = vscode.window.createStatusBarItem(
+        vscode.StatusBarAlignment.Right,
+        100
+    );
+    statusBarItem.text = '$(radio-tower) Copilot Proxy: Stopped';
+    statusBarItem.tooltip = 'Click to start the Copilot OpenAI Proxy server';
+    statusBarItem.command = 'copilot-proxy.start';
+    statusBarItem.show();
+    context.subscriptions.push(statusBarItem);
+
+    // Initialize the proxy server
+    proxyServer = new ProxyServer(statusBarItem);
+
+    // Initialize provider registry
+    const registry = getProviderRegistry();
+
+    // Register commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('copilot-proxy.start', async () => {
+            if (proxyServer?.isRunning()) {
+                vscode.window.showInformationMessage(
+                    `Copilot Proxy is already running on port ${proxyServer.getPort()}`
+                );
+                return;
+            }
+
+            try {
+                // Initialize providers (requires user consent for Copilot)
+                await initializeProviders();
+
+                if (!registry.hasModels()) {
+                    const result = await vscode.window.showWarningMessage(
+                        'No models available. Make sure at least one provider is configured.',
+                        'Retry',
+                        'Start Anyway'
+                    );
+
+                    if (result === 'Retry') {
+                        await registry.refreshModelCache();
+                        if (!registry.hasModels()) {
+                            vscode.window.showErrorMessage('Still no models available.');
+                            return;
+                        }
+                    } else if (result !== 'Start Anyway') {
+                        return;
+                    }
+                }
+
+                await proxyServer?.start();
+
+                const port = proxyServer?.getPort();
+                const token = proxyServer?.getToken();
+
+                // Show success message with actions
+                const action = await vscode.window.showInformationMessage(
+                    `Copilot Proxy started on http://127.0.0.1:${port}`,
+                    'Copy Token',
+                    'Copy Base URL',
+                    'Show Models'
+                );
+
+                if (action === 'Copy Token') {
+                    await vscode.env.clipboard.writeText(token || '');
+                    vscode.window.showInformationMessage('API token copied to clipboard');
+                } else if (action === 'Copy Base URL') {
+                    await vscode.env.clipboard.writeText(`http://127.0.0.1:${port}/v1`);
+                    vscode.window.showInformationMessage('Base URL copied to clipboard');
+                } else if (action === 'Show Models') {
+                    vscode.commands.executeCommand('copilot-proxy.showModels');
+                }
+
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    `Failed to start Copilot Proxy: ${err instanceof Error ? err.message : 'Unknown error'}`
+                );
+            }
+        }),
+
+        vscode.commands.registerCommand('copilot-proxy.stop', async () => {
+            if (!proxyServer?.isRunning()) {
+                vscode.window.showInformationMessage('Copilot Proxy is not running');
+                return;
+            }
+
+            await proxyServer.stop();
+            vscode.window.showInformationMessage('Copilot Proxy stopped');
+        }),
+
+        vscode.commands.registerCommand('copilot-proxy.copyToken', async () => {
+            if (!proxyServer?.isRunning()) {
+                vscode.window.showWarningMessage('Copilot Proxy is not running. Start it first.');
+                return;
+            }
+
+            const token = proxyServer.getToken();
+            await vscode.env.clipboard.writeText(token);
+            vscode.window.showInformationMessage('API token copied to clipboard');
+        }),
+
+        vscode.commands.registerCommand('copilot-proxy.showModels', async () => {
+            const models = await registry.getAllModels();
+
+            if (models.length === 0) {
+                vscode.window.showWarningMessage('No models available. Check provider configuration.');
+                return;
+            }
+
+            const items = models.map(model => ({
+                label: model.name,
+                description: model.fullId,
+                detail: `Provider: ${model.providerId}${model.maxInputTokens ? ` | Max tokens: ${model.maxInputTokens}` : ''}`
+            }));
+
+            const selected = await vscode.window.showQuickPick(items, {
+                placeHolder: 'Available Models',
+                title: 'Copilot OpenAI Proxy - Available Models'
+            });
+
+            if (selected) {
+                await vscode.env.clipboard.writeText(selected.description || selected.label);
+                vscode.window.showInformationMessage(`Model ID "${selected.description || selected.label}" copied to clipboard`);
+            }
+        }),
+
+        vscode.commands.registerCommand('copilot-proxy.showLogs', async () => {
+            LogsWebviewPanel.createOrShow(context.extensionUri);
+        }),
+
+        vscode.commands.registerCommand('copilot-proxy.showStats', async () => {
+            const logStats = getLoggingService().getStats();
+            const cacheStats = getCacheService().getStats();
+
+            const message = [
+                `📊 Request Statistics`,
+                `Total: ${logStats.totalRequests} | Success: ${logStats.successfulRequests} | Failed: ${logStats.failedRequests}`,
+                `Cached: ${logStats.cachedRequests} | Avg Latency: ${logStats.averageLatencyMs}ms`,
+                ``,
+                `💾 Cache: ${cacheStats.size} entries | ${cacheStats.enabled ? 'Enabled' : 'Disabled'}`
+            ].join('\n');
+
+            vscode.window.showInformationMessage(message, { modal: true });
+        }),
+
+        vscode.commands.registerCommand('copilot-proxy.clearCache', async () => {
+            getCacheService().clear();
+            vscode.window.showInformationMessage('Cache cleared');
+        }),
+
+        vscode.commands.registerCommand('copilot-proxy.toggleCache', async () => {
+            const cache = getCacheService();
+            cache.setEnabled(!cache.enabled);
+            vscode.window.showInformationMessage(`Cache ${cache.enabled ? 'enabled' : 'disabled'}`);
+        })
+    );
+
+    // Auto-start if configured
+    const config = vscode.workspace.getConfiguration('copilot-proxy');
+    if (config.get<boolean>('autoStart', false)) {
+        // Delay auto-start to ensure VS Code is fully loaded
+        setTimeout(() => {
+            vscode.commands.executeCommand('copilot-proxy.start');
+        }, 3000);
+    }
+
+    console.log('[Copilot Proxy] Extension activated');
+}
+
+export function deactivate() {
+    console.log('[Copilot Proxy] Extension deactivating...');
+    
+    if (proxyServer) {
+        proxyServer.dispose();
+        proxyServer = null;
+    }
+    
+    disposeProviderRegistry();
+    disposeLoggingService();
+    disposeCacheService();
+    
+    console.log('[Copilot Proxy] Extension deactivated');
+}
