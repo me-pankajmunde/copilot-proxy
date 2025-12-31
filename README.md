@@ -39,14 +39,42 @@ A VS Code extension that exposes GitHub Copilot's language models through an Ope
 
 ### API Endpoints
 
+#### Health Check
+
+Check if the server is running (no authentication required).
+
+```bash
+curl http://127.0.0.1:5001/health
+```
+
 #### List Models
+
+Get all available Copilot models.
 
 ```bash
 curl http://127.0.0.1:5001/v1/models \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
+#### Get Model
+
+Get details about a specific model.
+
+```bash
+curl http://127.0.0.1:5001/v1/models/gpt-4o \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+You can also specify a provider prefix:
+
+```bash
+curl http://127.0.0.1:5001/v1/models/copilot/gpt-4o \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
 #### Chat Completions
+
+Create a chat completion.
 
 ```bash
 curl http://127.0.0.1:5001/v1/chat/completions \
@@ -60,7 +88,9 @@ curl http://127.0.0.1:5001/v1/chat/completions \
   }'
 ```
 
-#### Streaming
+#### Streaming Completions
+
+Stream chat completions with Server-Sent Events.
 
 ```bash
 curl http://127.0.0.1:5001/v1/chat/completions \
@@ -73,6 +103,97 @@ curl http://127.0.0.1:5001/v1/chat/completions \
     ],
     "stream": true
   }'
+```
+
+#### Compare Completions
+
+Compare responses from multiple models simultaneously. Send the same prompt to multiple models and get all responses in parallel (max 10 models).
+
+```bash
+curl http://127.0.0.1:5001/v1/chat/completions/compare \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "models": ["gpt-4o", "gpt-4o-mini", "claude-3.5-sonnet"],
+    "messages": [
+      {"role": "user", "content": "Explain async/await"}
+    ]
+  }'
+```
+
+Response format:
+
+```json
+{
+  "id": "compare-...",
+  "created": 1234567890,
+  "results": [
+    {
+      "model": "copilot/gpt-4o",
+      "provider": "copilot",
+      "response": "...",
+      "latencyMs": 1234
+    },
+    {
+      "model": "copilot/gpt-4o-mini",
+      "provider": "copilot",
+      "response": "...",
+      "latencyMs": 567
+    }
+  ]
+}
+```
+
+#### List Providers
+
+Get all configured LLM providers.
+
+```bash
+curl http://127.0.0.1:5001/v1/providers \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### Get Logs
+
+Retrieve recent API request logs.
+
+```bash
+curl http://127.0.0.1:5001/v1/logs \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+Add a limit parameter to control the number of logs returned (default: 100):
+
+```bash
+curl "http://127.0.0.1:5001/v1/logs?limit=50" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### Get Log Statistics
+
+Get statistics about API usage.
+
+```bash
+curl http://127.0.0.1:5001/v1/logs/stats \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### Get Cache Statistics
+
+Get cache performance statistics.
+
+```bash
+curl http://127.0.0.1:5001/v1/cache/stats \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+#### Clear Cache
+
+Clear the response cache.
+
+```bash
+curl -X POST http://127.0.0.1:5001/v1/cache/clear \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 ### Using with Python (OpenAI SDK)
