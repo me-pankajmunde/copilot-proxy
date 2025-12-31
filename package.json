@@ -2,8 +2,8 @@
   "name": "copilot-openai-proxy",
   "displayName": "Copilot OpenAI Proxy",
   "description": "Expose GitHub Copilot chat models through an OpenAI-compatible API",
-  "version": "0.1.0",
-  "publisher": "your-publisher-id",
+  "version": "0.1.1",
+  "publisher": "pankajmunde",
   "engines": {
     "vscode": "^1.90.0"
   },

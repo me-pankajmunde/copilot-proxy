@@ -394,16 +394,56 @@ To access from outside your network:
 ### Security Notes
 
 - **Authentication required**: Bearer token is still mandatory for all requests
-- **GitHub auth**: Public forwarded ports require GitHub authentication
+- **GitHub auth for public ports**: Public forwarded ports require **interactive browser-based GitHub authentication**, which doesn't work with API clients
 - **Temporary URLs**: Forwarded URLs change when VS Code/Codespaces restarts
 - **Rate limits**: GitHub Copilot rate limits still apply
 
+### Important: Public Port Limitations
+
+⚠️ **VS Code's public port forwarding requires interactive GitHub login and will NOT work with API clients (OpenAI SDK, curl, etc.).**
+
+For programmatic API access, use one of these alternatives:
+
+**Option 1: Use Cloudflare Tunnel (Recommended)**
+```bash
+# Install cloudflared
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+chmod +x cloudflared
+
+# Start tunnel
+./cloudflared tunnel --url http://localhost:5001
+
+# Copy the https://xxx.trycloudflare.com URL and use it:
+```
+
+```python
+client = OpenAI(
+    base_url="https://xxx.trycloudflare.com/v1",  # From cloudflared output
+    api_key="YOUR_TOKEN"
+)
+```
+
+**Option 2: Use ngrok**
+```bash
+# Install from https://ngrok.com
+ngrok http 5001
+
+# Use the provided https://xxx.ngrok-free.app URL
+```
+
+**Option 3: Keep Port Private**
+Only use VS Code port forwarding with **private** visibility if accessing from:
+- Same machine (localhost)
+- Same Codespace/Remote session
+- VS Code Remote extensions
+
 ### Use Cases
 
-- **Remote Development**: Access from any machine while working in Codespaces
-- **Team Collaboration**: Share API access with your team
-- **Mobile Development**: Test your app against Copilot from mobile devices
-- **CI/CD Integration**: Access the API in remote build environments
+- **Local Development**: Use localhost URL directly
+- **Remote Development**: Use private port forwarding within same session
+- **External Access**: Use Cloudflare Tunnel or ngrok (NOT VS Code public ports)
+- **Team Collaboration**: Share tunneled URL (cloudflared/ngrok)
+- **CI/CD Integration**: Deploy in remote environment, use localhost
 
 ## Security
 

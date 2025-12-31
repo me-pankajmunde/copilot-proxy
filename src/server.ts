@@ -71,7 +71,12 @@ export class ProxyServer {
         message: string,
         type: string = 'error'
     ): void {
-        res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+        if (!res.headersSent) {
+            res.writeHead(statusCode, { 
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache'
+            });
+        }
         res.end(JSON.stringify({
             error: {
                 message,
@@ -87,20 +92,29 @@ export class ProxyServer {
         req: http.IncomingMessage,
         res: http.ServerResponse
     ): Promise<void> {
-        // Set CORS headers for local development
+        // Log incoming request for debugging
+        const forwarded = req.headers['x-forwarded-for'] ? ' (forwarded)' : '';
+        console.log(`[Copilot Proxy] ${req.method} ${req.url}${forwarded}`);
+        
+        // Set CORS headers for local development and forwarded URLs
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE, PUT, PATCH');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With');
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length');
 
         // Handle preflight requests
         if (req.method === 'OPTIONS') {
-            res.writeHead(204);
+            res.writeHead(204, {
+                'Content-Length': '0'
+            });
             res.end();
             return;
         }
 
-        // Parse URL
-        const url = new URL(req.url || '/', `http://localhost:${this.port}`);
+        // Parse URL - handle both direct and forwarded URLs
+        const host = req.headers.host || `localhost:${this.port}`;
+        const protocol = req.headers['x-forwarded-proto'] || 'http';
+        const url = new URL(req.url || '/', `${protocol}://${host}`);
         const pathname = url.pathname;
 
         // Validate authentication (except for health check)
@@ -113,8 +127,11 @@ export class ProxyServer {
             // Route requests
             if (pathname === '/health' && req.method === 'GET') {
                 // Health check endpoint (no auth required)
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ status: 'ok' }));
+                res.writeHead(200, { 
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache'
+                });
+                res.end(JSON.stringify({ status: 'ok', port: this.port }));
             } else if (pathname === '/v1/models' && req.method === 'GET') {
                 await handleListModels(req, res);
             } else if (pathname.match(/^\/v1\/models\/[\w\-\/]+$/) && req.method === 'GET') {
@@ -129,19 +146,31 @@ export class ProxyServer {
                 await handleListProviders(req, res);
             } else if (pathname === '/v1/logs' && req.method === 'GET') {
                 const logs = getLoggingService().getRecentLogs(100);
-                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.writeHead(200, { 
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache'
+                });
                 res.end(JSON.stringify({ object: 'list', data: logs }, null, 2));
             } else if (pathname === '/v1/logs/stats' && req.method === 'GET') {
                 const stats = getLoggingService().getStats();
-                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.writeHead(200, { 
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache'
+                });
                 res.end(JSON.stringify(stats, null, 2));
             } else if (pathname === '/v1/cache/stats' && req.method === 'GET') {
                 const stats = getCacheService().getStats();
-                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.writeHead(200, { 
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache'
+                });
                 res.end(JSON.stringify(stats, null, 2));
             } else if (pathname === '/v1/cache/clear' && req.method === 'POST') {
                 getCacheService().clear();
-                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.writeHead(200, { 
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache'
+                });
                 res.end(JSON.stringify({ status: 'ok', message: 'Cache cleared' }));
             } else {
                 this.sendError(res, 404, `Endpoint not found: ${req.method} ${pathname}`, 'invalid_request_error');
