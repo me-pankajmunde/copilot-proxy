@@ -216,6 +216,37 @@ export class ProxyServer {
     }
 
     /**
+     * Configure automatic port forwarding in workspace settings
+     */
+    async configurePortForwarding(visibility: 'private' | 'public' = 'private'): Promise<void> {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            console.log('[Copilot Proxy] No workspace folder open, skipping port forwarding configuration');
+            return;
+        }
+
+        try {
+            const config = vscode.workspace.getConfiguration('remote', workspaceFolder.uri);
+            
+            // Update ports attributes
+            const portsAttributes = config.get<any>('portsAttributes') || {};
+            portsAttributes[this.port.toString()] = {
+                label: 'Copilot Proxy API',
+                onAutoForward: 'notify'
+            };
+            
+            await config.update('portsAttributes', portsAttributes, vscode.ConfigurationTarget.Workspace);
+            await config.update('autoForwardPorts', true, vscode.ConfigurationTarget.Workspace);
+            await config.update('autoForwardPortsSource', 'process', vscode.ConfigurationTarget.Workspace);
+            
+            console.log(`[Copilot Proxy] Port forwarding configured for port ${this.port} (${visibility})`);
+        } catch (err) {
+            console.error('[Copilot Proxy] Failed to configure port forwarding:', err);
+            throw new Error('Failed to configure port forwarding: ' + (err instanceof Error ? err.message : 'Unknown error'));
+        }
+    }
+
+    /**
      * Update the status bar item
      */
     private updateStatusBar(): void {

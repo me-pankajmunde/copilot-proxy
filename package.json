@@ -55,6 +55,10 @@
       {
         "command": "copilot-proxy.reloadTools",
         "title": "Copilot Proxy: Reload Tool Configuration"
+      },
+      {
+        "command": "copilot-proxy.setupPortForwarding",
+        "title": "Copilot Proxy: Setup Port Forwarding"
       }
     ],
     "configuration": {
@@ -69,6 +73,17 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically start the server when VS Code launches"
+        },
+        "copilot-proxy.autoForwardPort": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically configure port forwarding when server starts"
+        },
+        "copilot-proxy.portVisibility": {
+          "type": "string",
+          "enum": ["private", "public"],
+          "default": "private",
+          "description": "Default port visibility (private = localhost only, public = accessible via forwarded URL)"
         },
         "copilot-proxy.cacheEnabled": {
           "type": "boolean",

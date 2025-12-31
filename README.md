@@ -29,6 +29,7 @@ A VS Code extension that exposes GitHub Copilot's language models through an Ope
 | `Copilot Proxy: Stop Server` | Stop the API server |
 | `Copilot Proxy: Copy API Token` | Copy the authentication token |
 | `Copilot Proxy: Show Available Models` | List available Copilot models |
+| `Copilot Proxy: Setup Port Forwarding` | Configure automatic port forwarding |
 
 ### Configuration
 
@@ -36,6 +37,8 @@ A VS Code extension that exposes GitHub Copilot's language models through an Ope
 |---------|---------|-------------|
 | `copilot-proxy.port` | `5001` | Port for the API server |
 | `copilot-proxy.autoStart` | `false` | Auto-start server on VS Code launch |
+| `copilot-proxy.autoForwardPort` | `false` | Automatically configure port forwarding when server starts |
+| `copilot-proxy.portVisibility` | `private` | Default port visibility (`private` or `public`) |
 
 ### API Endpoints
 
@@ -301,11 +304,106 @@ This is because the VS Code Language Model API does not expose token count infor
 
 ### Localhost Only
 
-For security, the server only binds to `127.0.0.1`. It cannot be accessed from other machines on your network.
+For security, the server only binds to `127.0.0.1`. It cannot be accessed from other machines on your network without port forwarding.
+
+**Port Forwarding**: Use the built-in automatic port forwarding feature to access the API remotely. See [Automatic Port Forwarding](#automatic-port-forwarding) below.
 
 ### Rate Limits
 
 The extension is subject to GitHub Copilot's rate limits. If you encounter rate limiting, wait a moment before retrying.
+
+## Automatic Port Forwarding
+
+The extension can automatically configure VS Code's port forwarding to make the API accessible via a public URL.
+
+### Quick Setup
+
+**Option 1: Enable in Settings**
+
+1. Open VS Code Settings (`Cmd+,` / `Ctrl+,`)
+2. Search for **"copilot-proxy.autoForwardPort"**
+3. Enable the checkbox
+4. (Optional) Set **"copilot-proxy.portVisibility"** to `public` for external access
+5. Start/restart the server
+
+**Option 2: Manual Setup**
+
+1. Start the Copilot Proxy server
+2. Click **"Setup Port Forwarding"** in the notification
+3. Choose **"Private"** (localhost forwarding) or **"Public"** (accessible via URL)
+4. Open the **PORTS** view to see the forwarded URL
+
+**Option 3: Command Palette**
+
+1. Start the server
+2. Run **"Copilot Proxy: Setup Port Forwarding"** from Command Palette
+3. Select visibility preference
+
+### How It Works
+
+When enabled, the extension automatically creates `.vscode/settings.json` in your workspace with:
+
+```json
+{
+  "remote.autoForwardPorts": true,
+  "remote.autoForwardPortsSource": "process",
+  "remote.portsAttributes": {
+    "5001": {
+      "label": "Copilot Proxy API",
+      "onAutoForward": "notify"
+    }
+  }
+}
+```
+
+VS Code then:
+- Detects the running server on port 5001
+- Automatically forwards the port
+- Shows it in the **PORTS** view (bottom panel)
+- Provides a forwarded URL you can use
+
+### Accessing the Forwarded API
+
+Once configured, find your forwarded URL in the PORTS view:
+
+1. Open the **PORTS** view (click PORTS tab at bottom)
+2. Find **"Copilot Proxy API (5001)"**
+3. Right-click → **"Copy Forwarded Address"**
+4. Use this URL in your API client:
+
+```python
+from openai import OpenAI
+
+# Use the forwarded URL
+client = OpenAI(
+    base_url="https://xxx-5001.app.github.dev/v1",
+    api_key="YOUR_TOKEN"  # Same token from the extension
+)
+```
+
+### Making Port Public
+
+To access from outside your network:
+
+1. Open **PORTS** view
+2. Right-click the forwarded port (5001)
+3. Select **"Port Visibility" → "Public"**
+4. The URL changes to a public GitHub URL
+5. Share this URL (with the token) to access remotely
+
+### Security Notes
+
+- **Authentication required**: Bearer token is still mandatory for all requests
+- **GitHub auth**: Public forwarded ports require GitHub authentication
+- **Temporary URLs**: Forwarded URLs change when VS Code/Codespaces restarts
+- **Rate limits**: GitHub Copilot rate limits still apply
+
+### Use Cases
+
+- **Remote Development**: Access from any machine while working in Codespaces
+- **Team Collaboration**: Share API access with your team
+- **Mobile Development**: Test your app against Copilot from mobile devices
+- **CI/CD Integration**: Access the API in remote build environments
 
 ## Security
 

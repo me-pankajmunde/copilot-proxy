@@ -103,22 +103,59 @@ export async function activate(context: vscode.ExtensionContext) {
                 const port = proxyServer?.getPort();
                 const token = proxyServer?.getToken();
 
-                // Show success message with actions
-                const action = await vscode.window.showInformationMessage(
-                    `Copilot Proxy started on http://127.0.0.1:${port}`,
-                    'Copy Token',
-                    'Copy Base URL',
-                    'Show Models'
-                );
+                // Configure automatic port forwarding if enabled
+                const autoForward = config.get<boolean>('autoForwardPort', false);
+                const visibility = config.get<'private' | 'public'>('portVisibility', 'private');
 
-                if (action === 'Copy Token') {
-                    await vscode.env.clipboard.writeText(token || '');
-                    vscode.window.showInformationMessage('API token copied to clipboard');
-                } else if (action === 'Copy Base URL') {
-                    await vscode.env.clipboard.writeText(`http://127.0.0.1:${port}/v1`);
-                    vscode.window.showInformationMessage('Base URL copied to clipboard');
-                } else if (action === 'Show Models') {
-                    vscode.commands.executeCommand('copilot-proxy.showModels');
+                if (autoForward) {
+                    try {
+                        await proxyServer?.configurePortForwarding(visibility);
+                        
+                        const message = visibility === 'public' 
+                            ? `Server started on port ${port}. Port forwarding configured (public access).`
+                            : `Server started on port ${port}. Port forwarding configured.`;
+                        
+                        const action = await vscode.window.showInformationMessage(
+                            message,
+                            'Copy Token',
+                            'Open Ports View',
+                            'Show Models'
+                        );
+                        
+                        if (action === 'Copy Token') {
+                            await vscode.env.clipboard.writeText(token || '');
+                            vscode.window.showInformationMessage('API token copied to clipboard');
+                        } else if (action === 'Open Ports View') {
+                            vscode.commands.executeCommand('workbench.view.remote');
+                        } else if (action === 'Show Models') {
+                            vscode.commands.executeCommand('copilot-proxy.showModels');
+                        }
+                    } catch (err) {
+                        vscode.window.showWarningMessage(
+                            `Server started but port forwarding failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+                        );
+                    }
+                } else {
+                    // Show success message with actions
+                    const action = await vscode.window.showInformationMessage(
+                        `Copilot Proxy started on http://127.0.0.1:${port}`,
+                        'Copy Token',
+                        'Copy Base URL',
+                        'Setup Port Forwarding',
+                        'Show Models'
+                    );
+
+                    if (action === 'Copy Token') {
+                        await vscode.env.clipboard.writeText(token || '');
+                        vscode.window.showInformationMessage('API token copied to clipboard');
+                    } else if (action === 'Copy Base URL') {
+                        await vscode.env.clipboard.writeText(`http://127.0.0.1:${port}/v1`);
+                        vscode.window.showInformationMessage('Base URL copied to clipboard');
+                    } else if (action === 'Setup Port Forwarding') {
+                        vscode.commands.executeCommand('copilot-proxy.setupPortForwarding');
+                    } else if (action === 'Show Models') {
+                        vscode.commands.executeCommand('copilot-proxy.showModels');
+                    }
                 }
 
             } catch (err) {
@@ -245,6 +282,39 @@ export async function activate(context: vscode.ExtensionContext) {
             vscode.window.showInformationMessage(
                 `Tools reloaded: ${status.toolCount} tools from ${status.builtinCount} built-ins and ${status.mcpServerCount} MCP servers`
             );
+        }),
+
+        vscode.commands.registerCommand('copilot-proxy.setupPortForwarding', async () => {
+            if (!proxyServer?.isRunning()) {
+                vscode.window.showWarningMessage('Server is not running. Start it first.');
+                return;
+            }
+            
+            const visibility = await vscode.window.showQuickPick(
+                [
+                    { label: 'Private', description: 'Only accessible from this machine', value: 'private' },
+                    { label: 'Public', description: 'Accessible via GitHub forwarded URL', value: 'public' }
+                ],
+                { placeHolder: 'Select port visibility' }
+            );
+            
+            if (visibility) {
+                try {
+                    await proxyServer.configurePortForwarding(visibility.value as 'private' | 'public');
+                    vscode.window.showInformationMessage(
+                        `Port forwarding configured (${visibility.label})! Open the PORTS view to see the forwarded URL.`,
+                        'Open Ports View'
+                    ).then(action => {
+                        if (action === 'Open Ports View') {
+                            vscode.commands.executeCommand('workbench.view.remote');
+                        }
+                    });
+                } catch (err) {
+                    vscode.window.showErrorMessage(
+                        `Failed to setup port forwarding: ${err instanceof Error ? err.message : 'Unknown error'}`
+                    );
+                }
+            }
         })
     );
 
