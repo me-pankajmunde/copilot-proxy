@@ -110,3 +110,121 @@ export interface ModelInfo {
     maxInputTokens: number;
     vendor: string;
 }
+
+// Anthropic API types
+export type AnthropicMessageRole = 'user' | 'assistant';
+
+export interface AnthropicTextContent {
+    type: 'text';
+    text: string;
+}
+
+export interface AnthropicMessage {
+    role: AnthropicMessageRole;
+    content: string | AnthropicTextContent[];
+}
+
+export interface AnthropicRequest {
+    model: string;
+    messages: AnthropicMessage[];
+    max_tokens: number;
+    system?: string;
+    temperature?: number;
+    top_p?: number;
+    top_k?: number;
+    stop_sequences?: string[];
+    stream?: boolean;
+    metadata?: {
+        user_id?: string;
+    };
+}
+
+export interface AnthropicUsage {
+    input_tokens: number;
+    output_tokens: number;
+}
+
+export interface AnthropicContentBlock {
+    type: 'text';
+    text: string;
+}
+
+export interface AnthropicResponse {
+    id: string;
+    type: 'message';
+    role: 'assistant';
+    content: AnthropicContentBlock[];
+    model: string;
+    stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | null;
+    stop_sequence?: string | null;
+    usage: AnthropicUsage;
+}
+
+// Anthropic streaming event types
+export interface AnthropicMessageStartEvent {
+    type: 'message_start';
+    message: {
+        id: string;
+        type: 'message';
+        role: 'assistant';
+        content: [];
+        model: string;
+        stop_reason: null;
+        stop_sequence: null;
+        usage: {
+            input_tokens: number;
+            output_tokens: number;
+        };
+    };
+}
+
+export interface AnthropicContentBlockStartEvent {
+    type: 'content_block_start';
+    index: number;
+    content_block: {
+        type: 'text';
+        text: '';
+    };
+}
+
+export interface AnthropicContentBlockDeltaEvent {
+    type: 'content_block_delta';
+    index: number;
+    delta: {
+        type: 'text_delta';
+        text: string;
+    };
+}
+
+export interface AnthropicContentBlockStopEvent {
+    type: 'content_block_stop';
+    index: number;
+}
+
+export interface AnthropicMessageDeltaEvent {
+    type: 'message_delta';
+    delta: {
+        stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence';
+        stop_sequence?: string | null;
+    };
+    usage: {
+        output_tokens: number;
+    };
+}
+
+export interface AnthropicMessageStopEvent {
+    type: 'message_stop';
+}
+
+export interface AnthropicPingEvent {
+    type: 'ping';
+}
+
+export type AnthropicStreamEvent = 
+    | AnthropicMessageStartEvent
+    | AnthropicContentBlockStartEvent
+    | AnthropicContentBlockDeltaEvent
+    | AnthropicContentBlockStopEvent
+    | AnthropicMessageDeltaEvent
+    | AnthropicMessageStopEvent
+    | AnthropicPingEvent;

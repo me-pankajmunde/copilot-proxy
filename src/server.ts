@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { handleListModels, handleGetModel } from './handlers/models';
 import { handleChatCompletions } from './handlers/completions';
 import { handleCompare, handleListProviders } from './handlers/compare';
+import { handleAnthropicMessages } from './handlers/anthropic';
 import { getLoggingService } from './logging';
 import { getCacheService } from './cache';
 
@@ -51,15 +52,23 @@ export class ProxyServer {
 
     /**
      * Validate the Authorization header
+     * Supports both "Authorization: Bearer TOKEN" and "x-api-key: TOKEN" formats
      */
     private validateAuth(req: http.IncomingMessage): boolean {
+        // Check Authorization header (OpenAI/standard format)
         const authHeader = req.headers['authorization'];
-        if (!authHeader) {
-            return false;
+        if (authHeader) {
+            const token = authHeader.replace(/^Bearer\s+/i, '');
+            return token === this.authToken;
         }
 
-        const token = authHeader.replace(/^Bearer\s+/i, '');
-        return token === this.authToken;
+        // Check x-api-key header (Anthropic format)
+        const apiKeyHeader = req.headers['x-api-key'];
+        if (apiKeyHeader) {
+            return apiKeyHeader === this.authToken;
+        }
+
+        return false;
     }
 
     /**
@@ -99,7 +108,7 @@ export class ProxyServer {
         // Set CORS headers for local development and forwarded URLs
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE, PUT, PATCH');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With, x-api-key, anthropic-version');
         res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length');
 
         // Handle preflight requests
@@ -142,6 +151,8 @@ export class ProxyServer {
                 await handleChatCompletions(req, res);
             } else if (pathname === '/v1/chat/completions/compare' && req.method === 'POST') {
                 await handleCompare(req, res);
+            } else if (pathname === '/anthropic/v1/messages' && req.method === 'POST') {
+                await handleAnthropicMessages(req, res);
             } else if (pathname === '/v1/providers' && req.method === 'GET') {
                 await handleListProviders(req, res);
             } else if (pathname === '/v1/logs' && req.method === 'GET') {

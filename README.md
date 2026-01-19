@@ -256,6 +256,150 @@ const response = await client.chat.completions.create({
 console.log(response.choices[0].message.content);
 ```
 
+## Anthropic SDK Support
+
+The proxy also exposes Anthropic-compatible API endpoints, allowing you to use the Anthropic SDK with GitHub Copilot models.
+
+### Base URL
+
+Use `http://127.0.0.1:5001/anthropic` as the base URL (note the `/anthropic` prefix).
+
+### API Endpoints
+
+#### Create Message
+
+```bash
+curl http://127.0.0.1:5001/anthropic/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_TOKEN" \
+  -H "anthropic-version: 2023-06-01" \
+  -d '{
+    "model": "claude-3.5-sonnet",
+    "max_tokens": 1024,
+    "messages": [
+      {"role": "user", "content": "Hello!"}
+    ]
+  }'
+```
+
+#### Streaming Messages
+
+```bash
+curl http://127.0.0.1:5001/anthropic/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_TOKEN" \
+  -H "anthropic-version: 2023-06-01" \
+  -d '{
+    "model": "claude-3.5-sonnet",
+    "max_tokens": 1024,
+    "messages": [
+      {"role": "user", "content": "Write a haiku about coding"}
+    ],
+    "stream": true
+  }'
+```
+
+### Using with Python (Anthropic SDK)
+
+```python
+from anthropic import Anthropic
+
+client = Anthropic(
+    base_url="http://127.0.0.1:5001/anthropic",
+    api_key="YOUR_TOKEN"  # Token from the extension
+)
+
+# Create a message
+message = client.messages.create(
+    model="claude-3.5-sonnet",
+    max_tokens=1024,
+    messages=[
+        {"role": "user", "content": "Explain recursion in one sentence"}
+    ]
+)
+print(message.content[0].text)
+
+# Streaming
+with client.messages.stream(
+    model="claude-3.5-sonnet",
+    max_tokens=1024,
+    messages=[
+        {"role": "user", "content": "Write a poem about VS Code"}
+    ]
+) as stream:
+    for text in stream.text_stream:
+        print(text, end="", flush=True)
+```
+
+### Using with Node.js (Anthropic SDK)
+
+```javascript
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic({
+    baseURL: 'http://127.0.0.1:5001/anthropic',
+    apiKey: 'YOUR_TOKEN'
+});
+
+const message = await client.messages.create({
+    model: 'claude-3.5-sonnet',
+    max_tokens: 1024,
+    messages: [
+        { role: 'user', content: 'Hello!' }
+    ]
+});
+
+console.log(message.content[0].text);
+
+// Streaming
+const stream = await client.messages.stream({
+    model: 'claude-3.5-sonnet',
+    max_tokens: 1024,
+    messages: [
+        { role: 'user', content: 'Write a haiku' }
+    ]
+});
+
+for await (const chunk of stream) {
+    if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        process.stdout.write(chunk.delta.text);
+    }
+}
+```
+
+### Using with Claude Code CLI
+
+Configure the Claude CLI to use the proxy:
+
+```bash
+# Set environment variables
+export ANTHROPIC_API_KEY="YOUR_TOKEN"
+export ANTHROPIC_BASE_URL="http://127.0.0.1:5001/anthropic"
+
+# Use Claude CLI
+claude "Explain async/await in JavaScript"
+```
+
+Or create a configuration file:
+
+```bash
+# ~/.config/claude/config.json
+{
+  "api_key": "YOUR_TOKEN",
+  "base_url": "http://127.0.0.1:5001/anthropic"
+}
+```
+
+### Anthropic API Differences
+
+The Anthropic endpoint implementation has these characteristics:
+
+- **Required field**: `max_tokens` is required (unlike OpenAI's optional `max_tokens`)
+- **System messages**: Supports both the `system` parameter and system role messages in the array (both are merged, with `system` parameter taking precedence)
+- **Streaming format**: Uses Anthropic's event-based streaming format (`message_start`, `content_block_delta`, etc.) instead of OpenAI's SSE chunks
+- **Model names**: Use the same model IDs as with OpenAI endpoints (e.g., `gpt-4o`, `claude-3.5-sonnet`, or `copilot/gpt-4o`)
+- **Authentication**: Uses `x-api-key` header (Anthropic style) or `Authorization: Bearer` header (both accepted)
+
 ## Available Models
 
 The available models depend on your GitHub Copilot subscription. Common models include:
